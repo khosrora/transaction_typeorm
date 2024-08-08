@@ -22,6 +22,9 @@ export class WalletEntity {
   @Column({ type: 'numeric' })
   amount: number;
 
+  @Column({ nullable: true })
+  reason: string;
+
   @CreateDateColumn()
   created_at: Date;
 

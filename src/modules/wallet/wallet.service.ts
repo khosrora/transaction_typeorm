@@ -1,11 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { WalletEntity } from './entities/wallet.entities';
-import { DepositDto } from './dto/wallet.dto';
+import { DepositDto, WithrawDto } from './dto/wallet.dto';
 import { UserService } from '../user/user.service';
 import { UserEntity } from '../user/entities/user.entities';
 import { walletType } from './wallet.enum';
+import { productsList } from '../products';
 
 @Injectable()
 export class WalletService {
@@ -32,7 +37,7 @@ export class WalletService {
         id: user.id,
       });
       const newBalance = Number(userData.balance) + Number(amount);
-      console.log(newBalance);
+
       await queryRunner.manager.update(
         UserEntity,
         { id: userData.id },
@@ -52,10 +57,52 @@ export class WalletService {
       // rollback
       await queryRunner.rollbackTransaction();
       await queryRunner.release();
-      console.log(error);
     }
     return {
       message: 'payment successfully',
+    };
+  }
+
+  async paymentByWallet_service(withrawDto: WithrawDto) {
+    const { productId, userId } = withrawDto;
+    const product = productsList.find((product) => product.id === productId);
+    if (!product) throw new NotFoundException();
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.startTransaction();
+    await queryRunner.connect();
+    try {
+      const user = await queryRunner.manager.findOneBy(UserEntity, {
+        id: userId,
+      });
+      if (!user) throw new NotFoundException();
+
+      if (product.price > user.balance) throw new BadRequestException();
+
+      const newBalance = Number(user.balance) - product.price;
+      await queryRunner.manager.update(
+        UserEntity,
+        { id: userId },
+        { balance: newBalance },
+      );
+
+      await queryRunner.manager.insert(WalletEntity, {
+        amount: product.price,
+        type: walletType.Withraw,
+        invoice_number: Date.now().toString(),
+        userId: userId,
+      });
+
+      // ! commit
+      await queryRunner.commitTransaction();
+      await queryRunner.release();
+    } catch (error) {
+      // rollback
+      await queryRunner.rollbackTransaction();
+      await queryRunner.release();
+      console.log(error);
+    }
+    return {
+      message: 'payment order successfully',
     };
   }
 }
